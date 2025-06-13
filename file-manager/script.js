@@ -18,6 +18,15 @@ class FileManager {
             this.toggleUploadArea();
         });
 
+        // Bulk Delete
+        document.getElementById('deleteSelectedBtn').addEventListener('click', () => {  
+            this.deleteSelectedItems();  
+        });
+
+        //Cut files
+        document.getElementById('cutBtn').addEventListener('click', () => {  
+            this.cutSelectedItems();  
+        });
         // File input
         document.getElementById('fileInput').addEventListener('change', (e) => {
             this.handleFileSelect(e.target.files);
@@ -225,13 +234,13 @@ class FileManager {
             <div class="file-date">${file.modified || ''}</div>
             <div class="file-actions">
                 ${!file.isParent ? `
-                    <button class="action-btn move" onclick="fileManager.cutItem('${escapedPath}')" title="Вырезать (Ctrl+X)">
+                    <button class="action-btn move" onclick="fileManager.cutItem('${escapedName}')" title="Вырезать (Ctrl+X)">
                         <i class="fas fa-cut"></i>
                     </button>
-                    <button class="action-btn download" onclick="fileManager.downloadItem('${escapedPath}', ${isDirectory})" title="Скачать">
+                    <button class="action-btn download" onclick="fileManager.downloadItem('${escapedName}', ${isDirectory})" title="Скачать">
                         <i class="fas fa-download"></i>
                     </button>
-                    <button class="action-btn delete" onclick="fileManager.showDeleteModal('${escapedPath}', ${isDirectory})" title="Удалить">
+                    <button class="action-btn delete" onclick="fileManager.showDeleteModal('${escapedName}', ${isDirectory})" title="Удалить">
                         <i class="fas fa-trash"></i>
                     </button>
                 ` : ''}
@@ -256,14 +265,6 @@ class FileManager {
                 }
             });
         }
-
-        // Add right-click context menu
-        item.addEventListener('contextmenu', (e) => {
-            e.preventDefault();
-            if (!file.isParent) {
-                this.showContextMenu(e, file);
-            }
-        });
 
         return item;
     }
@@ -293,32 +294,6 @@ class FileManager {
         this.updateSelectionUI();
     }
 
-    updateSelectionUI() {
-        const selectedCount = this.selectedItems.size;
-        const selectionInfo = document.getElementById('selectionInfo');
-        
-        if (selectedCount > 0) {
-            if (!selectionInfo) {
-                const info = document.createElement('div');
-                info.id = 'selectionInfo';
-                info.className = 'selection-info';
-                info.innerHTML = `
-                    <span>Выбрано: <strong>${selectedCount}</strong> элемент(ов)</span>
-                    <button onclick="fileManager.cutSelectedItems()" title="Вырезать выбранные (Ctrl+X)">
-                        <i class="fas fa-cut"></i> Вырезать
-                    </button>
-                    <button onclick="fileManager.clearSelection()" title="Снять выделение">
-                        <i class="fas fa-times"></i> Отменить
-                    </button>
-                `;
-                document.querySelector('.header').appendChild(info);
-            } else {
-                selectionInfo.querySelector('strong').textContent = selectedCount;
-            }
-        } else if (selectionInfo) {
-            selectionInfo.remove();
-        }
-    }
 
     clearSelection() {
         this.selectedItems.clear();
@@ -372,6 +347,7 @@ class FileManager {
             }
         }
     }
+
 
     async pasteItems() {
         if (this.cutItems.length === 0) {
@@ -432,43 +408,45 @@ class FileManager {
         }
     }
 
-    // Context menu
-    showContextMenu(event, file) {
-        // Remove existing context menu
-        const existingMenu = document.querySelector('.context-menu');
-        if (existingMenu) {
-            existingMenu.remove();
-        }
-
-        const menu = document.createElement('div');
-        menu.className = 'context-menu';
-        menu.style.left = event.pageX + 'px';
-        menu.style.top = event.pageY + 'px';
-
-        const isDirectory = file.type === 'directory';
-        
-        menu.innerHTML = `
-            <div class="context-menu-item" onclick="fileManager.cutItem('${file.name}')">
-                <i class="fas fa-cut"></i> Вырезать
-            </div>
-            <div class="context-menu-item" onclick="fileManager.downloadItem('${file.name}', ${isDirectory})">
-                <i class="fas fa-download"></i> Скачать
-            </div>
-            <div class="context-menu-item" onclick="fileManager.showDeleteModal('${file.name}', ${isDirectory})">
-                <i class="fas fa-trash"></i> Удалить
-            </div>
-        `;
-
-        document.body.appendChild(menu);
-
-        // Remove menu on click outside
-        setTimeout(() => {
-            document.addEventListener('click', function removeMenu() {
-                menu.remove();
-                document.removeEventListener('click', removeMenu);
-            });
-        }, 100);
+    async deleteSelectedItems() {  
+        if (this.selectedItems.size === 0) {  
+            this.showNotification('Выберите элементы для удаления', 'warning');  
+            return;  
+        }  
+  
+        if (!confirm(`Вы уверены, что хотите удалить ${this.selectedItems.size} элемент(ов)? Это действие нельзя отменить.`)) {  
+            return;  
+        }  
+  
+        try {  
+            const itemsToDelete = Array.from(this.selectedItems);  
+            
+            const response = await fetch('php/delete.php', {  
+                method: 'POST',  
+                headers: {  
+                    'Content-Type': 'application/json',  
+                },  
+                body: JSON.stringify({  
+                    names: itemsToDelete,  
+                    path: this.currentPath  
+                })  
+            });  
+     
+            const data = await response.json();  
+            
+            if (data.success) {  
+                this.showNotification(`Удалено ${itemsToDelete.length} элемент(ов)`, 'success');  
+                this.selectedItems.clear();  
+                this.loadFiles();  
+            } else {  
+                this.showNotification('Ошибка удаления: ' + data.error, 'error');  
+            }  
+        } catch (error) {  
+            this.showNotification('Ошибка соединения при удалении', 'error');  
+            console.error('Delete selected error:', error);  
+        }  
     }
+
 
     navigateToDirectory(dirName, isParent = false) {
         if (isParent) {
@@ -631,6 +609,7 @@ class FileManager {
             if (data.success) {
                 this.showNotification('Папка создана успешно', 'success');
                 this.loadFiles();
+                this.currentPath = this.currentPath ? `${this.currentPath}/${data.folderName}` : data.folderName;
                 this.hideCreateFolderModal();
             } else {
                 this.showNotification('Ошибка создания папки: ' + data.error, 'error');

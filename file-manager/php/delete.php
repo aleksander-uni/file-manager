@@ -6,7 +6,7 @@ ini_set('default_charset', 'UTF-8');
 
 header('Content-Type: application/json; charset=UTF-8');
 header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type');
 
 // Configuration
@@ -24,7 +24,6 @@ function deleteDirectory($dir) {
         return false;
     }
     
-    // Check if directory is readable
     if (!is_readable($dir)) {
         error_log("Delete error: Directory is not readable: $dir");
         return false;
@@ -54,7 +53,6 @@ function deleteDirectory($dir) {
         }
     }
     
-    // Try to remove the directory
     if (!rmdir($dir)) {
         error_log("Delete error: Failed to remove directory: $dir");
         return false;
@@ -70,68 +68,70 @@ try {
     
     $input = json_decode(file_get_contents('php://input'), true);
     
-    if (!isset($input['name']) || empty($input['name'])) {
-        throw new Exception('Имя элемента не указано');
+    if (!isset($input['names']) || !is_array($input['names']) || empty($input['names'])) {
+        throw new Exception('Нет элементов для удаления');
     }
     
-    $itemName = $input['name'];
+    $names = $input['names'];
     $requestedPath = isset($input['path']) ? sanitizePath($input['path']) : '';
-    $isDirectory = isset($input['isDirectory']) ? $input['isDirectory'] : false;
     
     $parentDir = $baseDir . $requestedPath;
-    $itemPath = $parentDir . '/' . $itemName;
     
-    // Security check
     $realBasePath = realpath($baseDir);
-    $realItemPath = realpath($itemPath);
+    $realParentPath = realpath($parentDir);
     
-    if (!$realItemPath || strpos($realItemPath, $realBasePath) !== 0) {
+    if (!$realParentPath || strpos($realParentPath, $realBasePath) !== 0) {
         throw new Exception('Недопустимый путь');
     }
     
-    // Check if item exists
-    if (!file_exists($itemPath)) {
-        throw new Exception('Элемент не найден: ' . $itemPath);
+    $errors = [];
+    
+    foreach ($names as $itemName) {
+        $itemPath = $parentDir . '/' . $itemName;
+        $realItemPath = realpath($itemPath);
+        
+        if (!$realItemPath || strpos($realItemPath, $realBasePath) !== 0) {
+            $errors[] = "Недопустимый путь для элемента: $itemName";
+            continue;
+        }
+        
+        if (!file_exists($realItemPath)) {
+            $errors[] = "Элемент не найден: $itemName";
+            continue;
+        }
+        
+        if (is_dir($realItemPath)) {
+            if (!is_writable($realItemPath)) {
+                $errors[] = "Недостаточно прав для удаления папки: $itemName";
+                continue;
+            }
+            if (!deleteDirectory($realItemPath)) {
+                $errors[] = "Не удалось удалить папку: $itemName";
+            }
+        } elseif (is_file($realItemPath)) {
+            if (!is_writable($realItemPath)) {
+                $errors[] = "Недостаточно прав для удаления файла: $itemName";
+                continue;
+            }
+            if (!unlink($realItemPath)) {
+                $errors[] = "Не удалось удалить файл: $itemName";
+            }
+        } else {
+            $errors[] = "Тип элемента не соответствует ожидаемому: $itemName";
+        }
     }
     
-    // Additional checks for directories
-    if ($isDirectory && is_dir($itemPath)) {
-        // Check if directory is empty
-        $files = scandir($itemPath);
-        if ($files === false) {
-            throw new Exception('Не удается прочитать содержимое папки');
-        }
-        
-        $files = array_diff($files, ['.', '..']);
-        $fileCount = count($files);
-        
-        error_log("Deleting directory: $itemPath (contains $fileCount items)");
-        
-        // Check permissions
-        if (!is_writable($itemPath)) {
-            throw new Exception('Недостаточно прав для удаления папки');
-        }
-        
-        if (!deleteDirectory($itemPath)) {
-            throw new Exception('Не удалось удалить папку. Проверьте права доступа и содержимое папки.');
-        }
-    } elseif (!$isDirectory && is_file($itemPath)) {
-        // Check permissions for file
-        if (!is_writable($itemPath)) {
-            throw new Exception('Недостаточно прав для удаления файла');
-        }
-        
-        if (!unlink($itemPath)) {
-            throw new Exception('Не удалось удалить файл');
-        }
+    if (count($errors) > 0) {
+        echo json_encode([
+            'success' => false,
+            'error' => implode('; ', $errors)
+        ]);
     } else {
-        throw new Exception('Тип элемента не соответствует ожидаемому');
+        echo json_encode([
+            'success' => true,
+            'message' => 'Элементы успешно удалены'
+        ]);
     }
-    
-    echo json_encode([
-        'success' => true,
-        'message' => $isDirectory ? 'Папка удалена успешно' : 'Файл удален успешно'
-    ]);
     
 } catch (Exception $e) {
     echo json_encode([
