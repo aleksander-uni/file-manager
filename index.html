@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Файловый менеджер</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📁</text></svg>">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1><i class="fas fa-folder-open"></i> Файловый менеджер</h1>
+            <div class="header-actions">
+                <button id="uploadBtn" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> Загрузить файлы
+                </button>
+                <button id="createFolderBtn" class="btn btn-secondary">
+                    <i class="fas fa-folder-plus"></i> Создать папку
+                </button>
+                <button id="createArchiveBtn" class="btn btn-success">
+                    <i class="fas fa-file-archive"></i> Создать архив
+                </button>
+            </div>
+        </header>
+
+        <!-- Навигация по папкам -->
+        <nav class="breadcrumb">
+            <span id="currentPath">/</span>
+            <div class="breadcrumb-actions">
+                <button id="pasteBtn" class="btn-icon" title="Вставить (Ctrl+V)" onclick="fileManager.pasteItems()">
+                    <i class="fas fa-paste"></i>
+                </button>
+                <button id="cutBtn" class="btn-icon" title="Вырезать">
+                    <i class="fas fa-cut"></i>
+                </button>
+                <button id="deleteSelectedBtn" class="btn-icon" title="Удалить выбранные">
+                    <i class="fas fa-trash"></i>                  
+                </button>
+                <button id="refreshBtn" class="btn-icon" title="Обновить">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+            </div>
+        </nav>
+
+        <!-- Область загрузки файлов -->
+        <div id="uploadArea" class="upload-area hidden">
+            <div class="upload-zone" id="dropZone">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p>Перетащите файлы сюда или нажмите для выбора</p>
+                <div class="upload-hint">Поддерживаются все типы файлов</div>
+                <input type="file" id="fileInput" multiple hidden>
+                <button class="btn btn-outline" onclick="document.getElementById('fileInput').click()">
+                    <i class="fas fa-file-plus"></i> Выбрать файлы
+                </button>
+            </div>
+            <div id="uploadProgress" class="upload-progress hidden">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+                <span id="progressText">0%</span>
+            </div>
+        </div>
+
+        <!-- Список файлов -->
+        <div class="file-list">
+            <div class="list-header">
+                <div class="col-name">Имя</div>
+                <div class="col-size">Размер</div>
+                <div class="col-date">Дата изменения</div>
+                <div class="col-actions">Действия</div>
+            </div>
+            <div id="fileListContent" class="list-content">
+                <!-- Файлы будут загружены динамически -->
+            </div>
+        </div>
+
+        <!-- Модальное окно для создания папки -->
+        <div id="createFolderModal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Создать новую папку</h3>
+                <input type="text" id="folderNameInput" placeholder="Введите имя папки">
+                <div class="modal-actions">
+                    <button id="confirmCreateFolder" class="btn btn-primary">Создать</button>
+                    <button id="cancelCreateFolder" class="btn btn-secondary">Отмена</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно для создания архива -->
+        <div id="createArchiveModal" class="modal hidden">
+            <div class="modal-content archive-modal">
+                <h3><i class="fas fa-archive"></i> Создать архив</h3>
+                <p>Выберите элементы для архивирования:</p>
+                
+                <div id="archiveItemsList" class="archive-items-list">
+                    <!-- Список элементов будет загружен динамически -->
+                </div>
+                
+                <div class="form-group">
+                    <label for="archiveNameInput">Имя архива:</label>
+                    <input type="text" id="archiveNameInput" placeholder="Введите имя архива (без расширения)">
+                </div>
+                
+                <div class="archive-options">
+                    <h4>Тип архива:</h4>
+                    <div class="radio-group">
+                        <div class="radio-item">
+                            <input type="radio" id="archiveZip" name="archiveType" value="zip" checked>
+                            <label for="archiveZip">
+                                <i class="fas fa-file-archive"></i>
+                                ZIP архив
+                            </label>
+                        </div>
+                        <div class="radio-item">
+                            <input type="radio" id="archiveTar" name="archiveType" value="tar">
+                            <label for="archiveTar">
+                                <i class="fas fa-file-archive"></i>
+                                TAR архив
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button id="confirmCreateArchive" class="btn btn-success">
+                        <i class="fas fa-compress-alt"></i> Создать архив
+                    </button>
+                    <button id="cancelCreateArchive" class="btn btn-secondary">
+                        <i class="fas fa-times"></i> Отмена
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно подтверждения удаления -->
+        <div id="deleteModal" class="modal hidden">
+            <div class="modal-content">
+                <h3>Подтверждение удаления</h3>
+                <p id="deleteMessage">Вы уверены, что хотите удалить этот элемент?</p>
+                <div class="modal-actions">
+                    <button id="confirmDelete" class="btn btn-danger">Удалить</button>
+                    <button id="cancelDelete" class="btn btn-secondary">Отмена</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Уведомления -->
+        <div id="notifications" class="notifications"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
